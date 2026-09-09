@@ -16,6 +16,13 @@ public class Intake extends LinearOpMode {
         DcMotor rightBack = hardwareMap.get(DcMotor.class, "right back");
         DcMotor intake = hardwareMap.get(DcMotor.class, "intake");
 
+        // Enable active braking on all drivetrain motors and intake motor
+        leftFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        rightFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        leftBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        rightBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
         // Reverse right side motors so forward power drives all wheels forward
         leftFront.setDirection(DcMotor.Direction.REVERSE);
         leftBack.setDirection(DcMotor.Direction.REVERSE);
@@ -28,19 +35,21 @@ public class Intake extends LinearOpMode {
         waitForStart();
 
         while (opModeIsActive()) {
-            // Controller inputs (Y is inverted so pushing stick up yields positive value)
-            double y = -gamepad1.left_stick_y;
-            double x = gamepad1.left_stick_x;
-            double rx = gamepad1.right_stick_x;
+            // Raw controller inputs (Y inverted so pushing stick up yields positive value)
+            double rawY = -gamepad1.left_stick_y;
+            double rawX = gamepad1.left_stick_x;
+            double rawRx = gamepad1.right_stick_x;
 
-            // Speed multiplier: 1.0x when Right Bumper is pressed, 0.6x otherwise
-            double multiplier = gamepad1.right_bumper ? 1.0 : 0.6;
+            // Apply logarithmic throttle curve to joystick inputs
+            double y = applyLogCurve(rawY);
+            double x = applyLogCurve(rawX);
+            double rx = applyLogCurve(rawRx);
 
             // Calculate drive motor powers
-            double powerLF = (y + x + rx) * multiplier;
-            double powerRF = (y - x - rx) * multiplier;
-            double powerLB = (y - x + rx) * multiplier;
-            double powerRB = (y + x - rx) * multiplier;
+            double powerLF = y + x + rx;
+            double powerRF = y - x - rx;
+            double powerLB = y - x + rx;
+            double powerRB = y + x - rx;
 
             // Normalize powers if any motor exceeds 1.0
             double max = Math.max(Math.abs(powerLF), 
@@ -60,8 +69,8 @@ public class Intake extends LinearOpMode {
             leftBack.setPower(powerLB);
             rightBack.setPower(powerRB);
 
-            // Intake control: X for In (1.0), O / Circle / B for Out (-1.0)
-            if (gamepad1.x) {
+            // Intake control using A for In (1.0), B for Out (-1.0)
+            if (gamepad1.a) {
                 intake.setPower(1.0);
             } else if (gamepad1.b || gamepad1.circle) {
                 intake.setPower(-1.0);
@@ -70,12 +79,19 @@ public class Intake extends LinearOpMode {
             }
 
             // Telemetry output
-            telemetry.addData("Speed", multiplier == 1.0 ? "100%" : "50%");
             telemetry.addData("LF Power", powerLF);
             telemetry.addData("RF Power", powerRF);
             telemetry.addData("LB Power", powerLB);
             telemetry.addData("RB Power", powerRB);
             telemetry.update();
         }
+    }
+
+    // Applies logarithmic scaling to joystick inputs with a 5% deadband
+    private double applyLogCurve(double input) {
+        if (Math.abs(input) < 0.05) {
+            return 0.0;
+        }
+        return Math.signum(input) * (Math.log10(1.0 + 9.0 * Math.abs(input)));
     }
 }
