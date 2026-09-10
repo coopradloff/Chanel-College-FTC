@@ -16,14 +16,14 @@ public class Intake extends LinearOpMode {
         DcMotor rightBack = hardwareMap.get(DcMotor.class, "right back");
         DcMotor intake = hardwareMap.get(DcMotor.class, "intake");
 
-        // Enable active braking on all drivetrain motors and intake motor
+        // Enable active braking on all motors when controls are released
         leftFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         rightFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         leftBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         rightBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
-        // Reverse right side motors so forward power drives all wheels forward
+        // Reverse left side motors so forward power drives all wheels forward
         leftFront.setDirection(DcMotor.Direction.REVERSE);
         leftBack.setDirection(DcMotor.Direction.REVERSE);
         rightFront.setDirection(DcMotor.Direction.FORWARD);
@@ -40,10 +40,10 @@ public class Intake extends LinearOpMode {
             double rawX = gamepad1.left_stick_x;
             double rawRx = gamepad1.right_stick_x;
 
-            // Apply logarithmic throttle curve to joystick inputs
-            double y = applyLogCurve(rawY);
-            double x = applyLogCurve(rawX);
-            double rx = applyLogCurve(rawRx);
+            // Apply progressive curve (0–85% stick yields ~0–40% power, 85–100% ramps to full power)
+            double y = applyThrottleCurve(rawY);
+            double x = applyThrottleCurve(rawX);
+            double rx = applyThrottleCurve(rawRx);
 
             // Calculate drive motor powers
             double powerLF = y + x + rx;
@@ -51,7 +51,7 @@ public class Intake extends LinearOpMode {
             double powerLB = y - x + rx;
             double powerRB = y + x - rx;
 
-            // Normalize powers if any motor exceeds 1.0
+            // Normalize powers if any motor power exceeds 1.0
             double max = Math.max(Math.abs(powerLF), 
                          Math.max(Math.abs(powerRF), 
                          Math.max(Math.abs(powerLB), Math.abs(powerRB))));
@@ -69,7 +69,7 @@ public class Intake extends LinearOpMode {
             leftBack.setPower(powerLB);
             rightBack.setPower(powerRB);
 
-            // Intake control using A for In (1.0), B for Out (-1.0)
+            // Intake control: A for In (1.0), B / Circle for Out (-1.0)
             if (gamepad1.a) {
                 intake.setPower(1.0);
             } else if (gamepad1.b || gamepad1.circle) {
@@ -87,11 +87,14 @@ public class Intake extends LinearOpMode {
         }
     }
 
-    // Applies logarithmic scaling to joystick inputs with a 5% deadband
-    private double applyLogCurve(double input) {
-        if (Math.abs(input) < 0.05) {
-            return 0.0;
+    // Power curve where 85% stick position maps directly to ~40% output power (0.85^5.64 ≈ 0.40)
+    private double applyThrottleCurve(double input) {
+        double absInput = Math.abs(input);
+        if (absInput < 0.05) {
+            return 0.0; // 5% deadband
         }
-        return Math.signum(input) * (Math.log10(1.0 + 9.0 * Math.abs(input)));
+        absInput = Math.min(absInput, 1.0); // Clamp input
+        double scaledPower = Math.pow(absInput, 5.64);
+        return Math.signum(input) * scaledPower;
     }
 }
